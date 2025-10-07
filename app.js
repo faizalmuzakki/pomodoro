@@ -111,6 +111,38 @@ function updateSettingsUI() {
     autoStartInput.checked = settings.autoStart;
     soundEnabledInput.checked = settings.soundEnabled;
     browserNotificationsInput.checked = settings.browserNotifications;
+
+    // Update notification permission status
+    updateNotificationPermissionStatus();
+}
+
+// Update notification permission status display
+function updateNotificationPermissionStatus() {
+    if (!('Notification' in window)) return;
+
+    // Find or create status element next to test button
+    let statusEl = document.getElementById('notificationPermissionStatus');
+    if (!statusEl) {
+        statusEl = document.createElement('div');
+        statusEl.id = 'notificationPermissionStatus';
+        statusEl.style.cssText = 'margin-top: 8px; font-size: 12px; padding: 6px 10px; border-radius: 4px;';
+        testNotificationBtn.parentElement.appendChild(statusEl);
+    }
+
+    const permission = Notification.permission;
+    if (permission === 'granted') {
+        statusEl.textContent = '✓ Browser notifications enabled';
+        statusEl.style.background = '#d1fae5';
+        statusEl.style.color = '#065f46';
+    } else if (permission === 'denied') {
+        statusEl.textContent = '⚠️ Browser notifications blocked - click 🔒 in address bar to enable';
+        statusEl.style.background = '#fee2e2';
+        statusEl.style.color = '#991b1b';
+    } else {
+        statusEl.textContent = 'ℹ️ Click "Test Notification" to enable browser notifications';
+        statusEl.style.background = '#dbeafe';
+        statusEl.style.color = '#1e40af';
+    }
 }
 
 // Setup Event Listeners
@@ -301,38 +333,32 @@ function playNotification() {
 
     // Create beep sound using Web Audio API
     const audioContext = new (window.AudioContext || window.webkitAudioContext)();
-    const oscillator = audioContext.createOscillator();
-    const gainNode = audioContext.createGain();
 
-    oscillator.connect(gainNode);
-    gainNode.connect(audioContext.destination);
+    // Function to create a single beep
+    const createBeep = (frequency, startTime, duration) => {
+        const oscillator = audioContext.createOscillator();
+        const gainNode = audioContext.createGain();
 
-    oscillator.frequency.value = 800;
-    oscillator.type = 'sine';
+        oscillator.connect(gainNode);
+        gainNode.connect(audioContext.destination);
 
-    gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
-    gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.5);
+        oscillator.frequency.value = frequency;
+        oscillator.type = 'sine';
 
-    oscillator.start(audioContext.currentTime);
-    oscillator.stop(audioContext.currentTime + 0.5);
+        gainNode.gain.setValueAtTime(0.4, startTime);
+        gainNode.gain.exponentialRampToValueAtTime(0.01, startTime + duration);
 
-    // Second beep
-    setTimeout(() => {
-        const osc2 = audioContext.createOscillator();
-        const gain2 = audioContext.createGain();
+        oscillator.start(startTime);
+        oscillator.stop(startTime + duration);
+    };
 
-        osc2.connect(gain2);
-        gain2.connect(audioContext.destination);
+    // Create a sequence of 3 beeps for better noticeability
+    const beepDuration = 0.3;
+    const beepGap = 0.15;
 
-        osc2.frequency.value = 1000;
-        osc2.type = 'sine';
-
-        gain2.gain.setValueAtTime(0.3, audioContext.currentTime);
-        gain2.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.5);
-
-        osc2.start(audioContext.currentTime);
-        osc2.stop(audioContext.currentTime + 0.5);
-    }, 200);
+    createBeep(800, audioContext.currentTime, beepDuration);
+    createBeep(1000, audioContext.currentTime + beepDuration + beepGap, beepDuration);
+    createBeep(1200, audioContext.currentTime + (beepDuration + beepGap) * 2, beepDuration);
 }
 
 // Show Browser Notification
@@ -364,29 +390,88 @@ async function requestNotificationPermission() {
 
 // Test Notification
 async function testNotification() {
-    if (!('Notification' in window)) {
-        alert('Browser notifications are not supported in your browser.');
-        return;
-    }
+    // Provide visual feedback
+    const originalText = testNotificationBtn.textContent;
+    testNotificationBtn.textContent = '⏳ Testing...';
+    testNotificationBtn.disabled = true;
 
-    if (Notification.permission === 'denied') {
-        alert('Notifications are blocked. Please enable them in your browser settings.');
-        return;
-    }
+    try {
+        // Always play sound first (even if browser notifications fail)
+        playNotification();
 
-    if (Notification.permission === 'default') {
-        const permission = await Notification.requestPermission();
-        if (permission !== 'granted') {
+        // Small delay to let sound start playing
+        await new Promise(resolve => setTimeout(resolve, 100));
+
+        if (!('Notification' in window)) {
+            alert('Browser notifications are not supported in your browser.\nHowever, sound notification played successfully!');
+            testNotificationBtn.textContent = '✓ Sound Played!';
+            setTimeout(() => {
+                testNotificationBtn.textContent = originalText;
+                testNotificationBtn.disabled = false;
+            }, 2000);
             return;
         }
+
+        if (Notification.permission === 'denied') {
+            const isChrome = /Chrome/.test(navigator.userAgent) && /Google Inc/.test(navigator.vendor);
+            const isFirefox = /Firefox/.test(navigator.userAgent);
+
+            let instructions = 'Browser notifications are blocked.\n\n';
+
+            if (isChrome) {
+                instructions += 'To enable:\n1. Click the lock icon (🔒) in the address bar\n2. Find "Notifications" and change to "Allow"';
+            } else if (isFirefox) {
+                instructions += 'To enable:\n1. Click the lock icon (🔒) in the address bar\n2. Click "Clear this permission"\n3. Reload the page and allow notifications';
+            } else {
+                instructions += 'To enable:\n1. Click the lock/info icon in the address bar\n2. Find notification settings and change to "Allow"\n3. Reload the page';
+            }
+
+            instructions += '\n\nHowever, sound notification played successfully!';
+
+            alert(instructions);
+            testNotificationBtn.textContent = '✓ Sound Played!';
+            setTimeout(() => {
+                testNotificationBtn.textContent = originalText;
+                testNotificationBtn.disabled = false;
+            }, 2000);
+            return;
+        }
+
+        if (Notification.permission === 'default') {
+            const permission = await Notification.requestPermission();
+            updateNotificationPermissionStatus(); // Update status after permission request
+            if (permission !== 'granted') {
+                testNotificationBtn.textContent = '✓ Sound Played!';
+                setTimeout(() => {
+                    testNotificationBtn.textContent = originalText;
+                    testNotificationBtn.disabled = false;
+                }, 2000);
+                return;
+            }
+        }
+
+        // Try to show notification
+        new Notification('🍅 Pomodoro Timer', {
+            body: 'Notifications are working perfectly!',
+            icon: '🍅'
+        });
+
+        // Show success feedback
+        testNotificationBtn.textContent = '✓ Test Complete!';
+        updateNotificationPermissionStatus(); // Update permission status
+        setTimeout(() => {
+            testNotificationBtn.textContent = originalText;
+            testNotificationBtn.disabled = false;
+        }, 2000);
+    } catch (error) {
+        console.error('Test notification error:', error);
+        testNotificationBtn.textContent = '✓ Sound Played!';
+        updateNotificationPermissionStatus(); // Update permission status
+        setTimeout(() => {
+            testNotificationBtn.textContent = originalText;
+            testNotificationBtn.disabled = false;
+        }, 2000);
     }
-
-    new Notification('🍅 Pomodoro Timer', {
-        body: 'Notifications are working perfectly!',
-        icon: '🍅'
-    });
-
-    playNotification();
 }
 
 // Open Settings
