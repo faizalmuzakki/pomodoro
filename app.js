@@ -14,11 +14,13 @@ const DEFAULT_SETTINGS = {
 // Application State
 let settings = { ...DEFAULT_SETTINGS };
 let timerInterval = null;
+let timerWorker = null;
 let totalSeconds = settings.workTime * 60;
 let currentSeconds = totalSeconds;
 let isRunning = false;
 let currentSession = 1;
 let sessionType = 'work'; // 'work', 'shortBreak', 'longBreak'
+let targetEndTime = null; // Timestamp when timer should end
 let todayStats = {
     date: new Date().toDateString(),
     completedSessions: 0,
@@ -61,7 +63,28 @@ function init() {
     updateSessionInfo();
     updateStats();
     setupEventListeners();
+    setupTimerWorker();
     requestNotificationPermission();
+}
+
+// Setup Web Worker for background timing
+function setupTimerWorker() {
+    try {
+        timerWorker = new Worker('timer-worker.js');
+        timerWorker.addEventListener('message', (e) => {
+            const { type, remaining } = e.data;
+
+            if (type === 'tick') {
+                currentSeconds = remaining;
+                updateDisplay();
+            } else if (type === 'complete') {
+                completeSession();
+            }
+        });
+    } catch (error) {
+        console.warn('Web Worker not available, falling back to setInterval:', error);
+        timerWorker = null;
+    }
 }
 
 // Load settings from localStorage
@@ -176,6 +199,25 @@ function setupEventListeners() {
             e.returnValue = '';
         }
     });
+
+    // Handle visibility change to ensure timer accuracy
+    document.addEventListener('visibilitychange', () => {
+        if (!document.hidden && isRunning && targetEndTime) {
+            if (timerWorker) {
+                // Ask worker for current state
+                timerWorker.postMessage({ action: 'check' });
+            } else {
+                // Immediately update when tab becomes visible (fallback)
+                const remaining = Math.ceil((targetEndTime - Date.now()) / 1000);
+                currentSeconds = Math.max(0, remaining);
+                updateDisplay();
+
+                if (currentSeconds <= 0) {
+                    completeSession();
+                }
+            }
+        }
+    });
 }
 
 // Start Timer
@@ -185,14 +227,29 @@ function startTimer() {
         startBtn.style.display = 'none';
         pauseBtn.style.display = 'inline-flex';
 
-        timerInterval = setInterval(() => {
-            currentSeconds--;
-            updateDisplay();
+        // Set target end time based on current remaining seconds
+        targetEndTime = Date.now() + (currentSeconds * 1000);
 
-            if (currentSeconds <= 0) {
-                completeSession();
-            }
-        }, 1000);
+        if (timerWorker) {
+            // Use Web Worker for accurate background timing
+            timerWorker.postMessage({
+                action: 'start',
+                data: { targetEndTime }
+            });
+        } else {
+            // Fallback to setInterval
+            timerInterval = setInterval(() => {
+                // Calculate actual remaining time based on current time
+                const remaining = Math.ceil((targetEndTime - Date.now()) / 1000);
+                currentSeconds = Math.max(0, remaining);
+
+                updateDisplay();
+
+                if (currentSeconds <= 0) {
+                    completeSession();
+                }
+            }, 100); // Check every 100ms for smoother updates
+        }
     }
 }
 
@@ -200,7 +257,16 @@ function startTimer() {
 function pauseTimer() {
     if (isRunning) {
         isRunning = false;
-        clearInterval(timerInterval);
+
+        if (timerWorker) {
+            timerWorker.postMessage({ action: 'stop' });
+        }
+        if (timerInterval) {
+            clearInterval(timerInterval);
+            timerInterval = null;
+        }
+
+        targetEndTime = null; // Clear target time when paused
         startBtn.style.display = 'inline-flex';
         pauseBtn.style.display = 'none';
     }

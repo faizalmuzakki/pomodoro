@@ -2,7 +2,7 @@
 
 A beautiful, feature-rich Pomodoro timer to boost your productivity. Built with vanilla JavaScript, fully client-side with localStorage persistence.
 
-🌐 **[Live Demo](https://pomodoro.solork.dev)** 
+🌐 **[Live Demo](https://pomodoro.solork.dev)**
 
 ## ✨ Features
 
@@ -22,8 +22,9 @@ A beautiful, feature-rich Pomodoro timer to boost your productivity. Built with 
 
 ### 🔔 Notifications
 - **Sound notifications** - pleasant beep sound using Web Audio API
-- **Browser notifications** - desktop notifications when sessions complete
+- **Browser notifications** - desktop notifications when sessions complete (even in background!)
 - **Test notification** - check your notification settings
+- **Background timing** - notifications fire at exact time, even if tab/browser is inactive
 
 ### 💾 Data Persistence
 - **LocalStorage** - all settings and stats saved locally
@@ -173,6 +174,7 @@ netlify deploy --prod
 - **HTML5** - Semantic markup
 - **CSS3** - Modern styling with CSS Grid, Flexbox, animations
 - **Vanilla JavaScript** - No frameworks, pure ES6+
+- **Web Workers** - Background timing (unaffected by tab throttling)
 - **Web Audio API** - Notification sounds
 - **Notifications API** - Browser notifications
 - **LocalStorage API** - Data persistence
@@ -187,10 +189,12 @@ netlify deploy --prod
 - CSS custom properties (variables)
 - CSS Grid & Flexbox
 - SVG for progress ring
+- Web Workers for background timing
 - Web Audio API for sounds
 - Browser Notifications API
 - LocalStorage for persistence
 - ES6+ JavaScript features
+- Timestamp-based timing (immune to tab throttling)
 
 ## 📊 Data Storage
 
@@ -274,9 +278,10 @@ const DEFAULT_SETTINGS = {
 3. Clear browser cache and try again
 
 ### Timer Not Accurate
-1. Browser throttles timers when tab is inactive
-2. For best accuracy, keep tab active
-3. Browser notifications will alert you even if tab is inactive
+~~1. Browser throttles timers when tab is inactive~~ **FIXED!**
+- ✅ Timer now uses Web Worker for accurate background timing
+- ✅ Works perfectly even when tab is inactive or browser is minimized
+- ✅ Notifications fire at the exact right time
 
 ## 📝 Future Enhancements
 
