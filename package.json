@@ -1,0 +1,23 @@
+{
+  "name": "pomodoro-timer",
+  "version": "1.0.0",
+  "description": "A beautiful, feature-rich Pomodoro timer with localStorage persistence and browser notifications",
+  "type": "module",
+  "scripts": {
+    "dev": "npx serve -p 3000",
+    "build": "echo 'No build needed - static site'",
+    "preview": "npx serve -p 8080"
+  },
+  "keywords": [
+    "pomodoro",
+    "timer",
+    "productivity",
+    "time-management",
+    "focus",
+    "pomodoro-timer",
+    "pomodoro-technique"
+  ],
+  "author": "Solork",
+  "license": "MIT",
+  "devDependencies": {}
+}
