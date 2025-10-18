@@ -121,6 +121,23 @@
             </button>
         </div>
 
+        <!-- Sit-Stand Timer -->
+        <div id="postureTimerContainer" class="posture-timer-container" style="display: none;">
+            <div class="posture-timer">
+                <div class="posture-header">
+                    <span class="posture-icon" id="postureIcon">🪑</span>
+                    <span class="posture-status" id="postureStatus">Sitting</span>
+                </div>
+                <div class="posture-time" id="postureTime">45:00</div>
+                <div class="posture-progress">
+                    <div class="posture-progress-bar" id="postureProgressBar"></div>
+                </div>
+                <button id="switchPostureBtn" class="btn btn-secondary btn-small">
+                    Switch to Standing
+                </button>
+            </div>
+        </div>
+
         <!-- Stats -->
         <div class="stats-container">
             <div class="stat-card">
@@ -130,6 +147,22 @@
             <div class="stat-card">
                 <div class="stat-value" id="totalTime">0m</div>
                 <div class="stat-label">Total Focus Time</div>
+            </div>
+        </div>
+
+        <!-- Posture Stats (shown when posture reminders enabled) -->
+        <div id="postureStatsContainer" class="stats-container" style="display: none;">
+            <div class="stat-card">
+                <div class="stat-value" id="postureChanges">0</div>
+                <div class="stat-label">Posture Changes</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="timeStanding">0m</div>
+                <div class="stat-label">Time Standing</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="timeSitting">0m</div>
+                <div class="stat-label">Time Sitting</div>
             </div>
         </div>
 
@@ -225,6 +258,52 @@
                     <button id="testNotification" class="btn btn-secondary btn-small">
                         Test Notification
                     </button>
+                </div>
+
+                <!-- Sit-Stand Desk Settings -->
+                <div class="settings-section">
+                    <h3>🪑 Sit-Stand Desk Timer</h3>
+
+                    <div class="setting-item-toggle">
+                        <label for="postureReminders">Enable posture reminders</label>
+                        <label class="toggle">
+                            <input type="checkbox" id="postureReminders">
+                            <span class="slider"></span>
+                        </label>
+                    </div>
+
+                    <div id="postureSettings" style="display: none; margin-top: 15px;">
+                        <div class="setting-item">
+                            <label for="sittingDuration">Sitting Duration (minutes)</label>
+                            <div class="input-group">
+                                <button class="btn-adjust" data-action="decrease" data-target="sittingDuration">-</button>
+                                <input type="number" id="sittingDuration" min="15" max="90" value="45">
+                                <button class="btn-adjust" data-action="increase" data-target="sittingDuration">+</button>
+                            </div>
+                        </div>
+
+                        <div class="setting-item">
+                            <label for="standingDuration">Standing Duration (minutes)</label>
+                            <div class="input-group">
+                                <button class="btn-adjust" data-action="decrease" data-target="standingDuration">-</button>
+                                <input type="number" id="standingDuration" min="10" max="60" value="30">
+                                <button class="btn-adjust" data-action="increase" data-target="standingDuration">+</button>
+                            </div>
+                        </div>
+
+                        <div class="setting-item">
+                            <label for="activeBreakInterval">Active Break Reminder (minutes)</label>
+                            <div class="input-group">
+                                <button class="btn-adjust" data-action="decrease" data-target="activeBreakInterval">-</button>
+                                <input type="number" id="activeBreakInterval" min="60" max="180" value="90">
+                                <button class="btn-adjust" data-action="increase" data-target="activeBreakInterval">+</button>
+                            </div>
+                        </div>
+
+                        <div class="info-box">
+                            <p>💡 Based on TODO.md: Sit for 30-60 min, stand for 15-30 min, take an active break every 90-120 min</p>
+                        </div>
+                    </div>
                 </div>
 
                 <!-- Data Management -->

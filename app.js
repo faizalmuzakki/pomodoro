@@ -8,7 +8,11 @@ const DEFAULT_SETTINGS = {
     sessionsBeforeLongBreak: 4,
     autoStart: false,
     soundEnabled: true,
-    browserNotifications: false
+    browserNotifications: false,
+    postureReminders: false,
+    standingDuration: 30, // minutes to stand
+    sittingDuration: 45, // minutes to sit
+    activeBreakInterval: 90 // minutes between active break reminders
 };
 
 // Application State
@@ -24,8 +28,18 @@ let targetEndTime = null; // Timestamp when timer should end
 let todayStats = {
     date: new Date().toDateString(),
     completedSessions: 0,
-    totalFocusTime: 0
+    totalFocusTime: 0,
+    postureChanges: 0,
+    timeStanding: 0,
+    timeSitting: 0
 };
+let currentPosture = 'sitting'; // 'sitting' or 'standing'
+let postureStartTime = null;
+let postureInterval = null;
+let postureSeconds = 0;
+let postureTotalSeconds = 0;
+let activeBreakInterval = null;
+let activeBreakElapsed = 0; // minutes elapsed since last active break
 
 // DOM Elements
 const timerDisplay = document.getElementById('timerDisplay');
@@ -53,6 +67,23 @@ const browserNotificationsInput = document.getElementById('browserNotifications'
 const testNotificationBtn = document.getElementById('testNotification');
 const resetStatsBtn = document.getElementById('resetStats');
 
+// Posture Timer Elements
+const postureRemindersInput = document.getElementById('postureReminders');
+const postureSettingsDiv = document.getElementById('postureSettings');
+const sittingDurationInput = document.getElementById('sittingDuration');
+const standingDurationInput = document.getElementById('standingDuration');
+const activeBreakIntervalInput = document.getElementById('activeBreakInterval');
+const postureTimerContainer = document.getElementById('postureTimerContainer');
+const postureIcon = document.getElementById('postureIcon');
+const postureStatus = document.getElementById('postureStatus');
+const postureTime = document.getElementById('postureTime');
+const postureProgressBar = document.getElementById('postureProgressBar');
+const switchPostureBtn = document.getElementById('switchPostureBtn');
+const postureStatsContainer = document.getElementById('postureStatsContainer');
+const postureChangesEl = document.getElementById('postureChanges');
+const timeStandingEl = document.getElementById('timeStanding');
+const timeSittingEl = document.getElementById('timeSitting');
+
 // Initialize
 init();
 
@@ -62,9 +93,17 @@ function init() {
     updateDisplay();
     updateSessionInfo();
     updateStats();
+    updatePostureStats();
     setupEventListeners();
     setupTimerWorker();
     requestNotificationPermission();
+
+    // Initialize posture timer if enabled
+    if (settings.postureReminders) {
+        startPostureTimer();
+        postureTimerContainer.style.display = 'block';
+        postureStatsContainer.style.display = 'grid';
+    }
 }
 
 // Setup Web Worker for background timing
@@ -135,6 +174,13 @@ function updateSettingsUI() {
     soundEnabledInput.checked = settings.soundEnabled;
     browserNotificationsInput.checked = settings.browserNotifications;
 
+    // Posture settings
+    postureRemindersInput.checked = settings.postureReminders;
+    sittingDurationInput.value = settings.sittingDuration;
+    standingDurationInput.value = settings.standingDuration;
+    activeBreakIntervalInput.value = settings.activeBreakInterval;
+    postureSettingsDiv.style.display = settings.postureReminders ? 'block' : 'none';
+
     // Update notification permission status
     updateNotificationPermissionStatus();
 }
@@ -179,6 +225,10 @@ function setupEventListeners() {
     saveSettings.addEventListener('click', handleSaveSettings);
     testNotificationBtn.addEventListener('click', testNotification);
     resetStatsBtn.addEventListener('click', resetStats);
+
+    // Posture timer listeners
+    postureRemindersInput.addEventListener('change', togglePostureSettings);
+    switchPostureBtn.addEventListener('click', switchPosture);
 
     // Close modal when clicking outside
     settingsModal.addEventListener('click', (e) => {
@@ -552,6 +602,8 @@ function closeSettings() {
 
 // Handle Save Settings
 function handleSaveSettings() {
+    const previousPostureReminders = settings.postureReminders;
+
     settings.workTime = parseInt(workTimeInput.value);
     settings.shortBreakTime = parseInt(shortBreakTimeInput.value);
     settings.sessionsBeforeLongBreak = parseInt(sessionsBeforeLongBreakInput.value);
@@ -559,12 +611,31 @@ function handleSaveSettings() {
     settings.soundEnabled = soundEnabledInput.checked;
     settings.browserNotifications = browserNotificationsInput.checked;
 
+    // Posture settings
+    settings.postureReminders = postureRemindersInput.checked;
+    settings.sittingDuration = parseInt(sittingDurationInput.value);
+    settings.standingDuration = parseInt(standingDurationInput.value);
+    settings.activeBreakInterval = parseInt(activeBreakIntervalInput.value);
+
     saveSettingsToStorage();
 
     // Reset timer with new settings if not running
     if (!isRunning) {
         setSessionType('work');
         currentSession = 1;
+    }
+
+    // Handle posture timer toggle
+    if (settings.postureReminders && !previousPostureReminders) {
+        // Start posture timer
+        startPostureTimer();
+    } else if (!settings.postureReminders && previousPostureReminders) {
+        // Stop posture timer
+        stopPostureTimer();
+    } else if (settings.postureReminders && previousPostureReminders) {
+        // Restart posture timer with new settings
+        stopPostureTimer();
+        startPostureTimer();
     }
 
     closeSettings();
@@ -605,6 +676,211 @@ function resetStats() {
         };
         saveStats();
         updateStats();
+    }
+}
+
+// Posture Timer Functions
+
+// Toggle posture settings visibility
+function togglePostureSettings() {
+    postureSettingsDiv.style.display = postureRemindersInput.checked ? 'block' : 'none';
+}
+
+// Start posture timer
+function startPostureTimer() {
+    // Set initial posture duration
+    postureTotalSeconds = settings.sittingDuration * 60;
+    postureSeconds = postureTotalSeconds;
+    currentPosture = 'sitting';
+    postureStartTime = Date.now();
+    activeBreakElapsed = 0;
+
+    updatePostureDisplay();
+
+    // Start countdown
+    postureInterval = setInterval(() => {
+        postureSeconds--;
+
+        if (postureSeconds <= 0) {
+            // Time to switch posture
+            completePostureCycle();
+        }
+
+        updatePostureDisplay();
+
+        // Check for active break reminder (every minute)
+        if (postureSeconds % 60 === 0) {
+            activeBreakElapsed++;
+            if (activeBreakElapsed >= settings.activeBreakInterval) {
+                showActiveBreakReminder();
+                activeBreakElapsed = 0;
+            }
+        }
+    }, 1000);
+
+    // Show UI
+    postureTimerContainer.style.display = 'block';
+    postureStatsContainer.style.display = 'grid';
+}
+
+// Stop posture timer
+function stopPostureTimer() {
+    if (postureInterval) {
+        clearInterval(postureInterval);
+        postureInterval = null;
+    }
+
+    // Update stats with remaining time
+    updatePostureTimeStats();
+
+    // Hide UI
+    postureTimerContainer.style.display = 'none';
+    postureStatsContainer.style.display = 'none';
+}
+
+// Update posture display
+function updatePostureDisplay() {
+    const minutes = Math.floor(postureSeconds / 60);
+    const seconds = postureSeconds % 60;
+    postureTime.textContent = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+
+    // Update progress bar
+    const progress = ((postureTotalSeconds - postureSeconds) / postureTotalSeconds) * 100;
+    postureProgressBar.style.width = `${progress}%`;
+
+    // Update status and icon
+    if (currentPosture === 'sitting') {
+        postureIcon.textContent = '🪑';
+        postureStatus.textContent = 'Sitting';
+        switchPostureBtn.textContent = 'Switch to Standing';
+        document.querySelector('.posture-timer').classList.remove('standing');
+    } else {
+        postureIcon.textContent = '🧍';
+        postureStatus.textContent = 'Standing';
+        switchPostureBtn.textContent = 'Switch to Sitting';
+        document.querySelector('.posture-timer').classList.add('standing');
+    }
+}
+
+// Complete posture cycle (automatic switch)
+function completePostureCycle() {
+    // Update stats
+    updatePostureTimeStats();
+
+    // Play notification
+    playPostureNotification();
+    showPostureNotification();
+
+    // Switch posture
+    currentPosture = currentPosture === 'sitting' ? 'standing' : 'sitting';
+    todayStats.postureChanges++;
+    saveStats();
+    updatePostureStats();
+
+    // Set new duration
+    postureTotalSeconds = (currentPosture === 'sitting' ? settings.sittingDuration : settings.standingDuration) * 60;
+    postureSeconds = postureTotalSeconds;
+    postureStartTime = Date.now();
+
+    updatePostureDisplay();
+}
+
+// Manual posture switch
+function switchPosture() {
+    // Update stats with time spent in current posture
+    updatePostureTimeStats();
+
+    // Switch posture
+    currentPosture = currentPosture === 'sitting' ? 'standing' : 'sitting';
+    todayStats.postureChanges++;
+    saveStats();
+    updatePostureStats();
+
+    // Set new duration
+    postureTotalSeconds = (currentPosture === 'sitting' ? settings.sittingDuration : settings.standingDuration) * 60;
+    postureSeconds = postureTotalSeconds;
+    postureStartTime = Date.now();
+
+    updatePostureDisplay();
+}
+
+// Update posture time stats
+function updatePostureTimeStats() {
+    const elapsedMinutes = Math.floor((Date.now() - postureStartTime) / 60000);
+
+    if (currentPosture === 'sitting') {
+        todayStats.timeSitting += elapsedMinutes;
+    } else {
+        todayStats.timeStanding += elapsedMinutes;
+    }
+
+    saveStats();
+    updatePostureStats();
+}
+
+// Update posture stats display
+function updatePostureStats() {
+    postureChangesEl.textContent = todayStats.postureChanges || 0;
+    timeStandingEl.textContent = `${todayStats.timeStanding || 0}m`;
+    timeSittingEl.textContent = `${todayStats.timeSitting || 0}m`;
+}
+
+// Play posture notification sound
+function playPostureNotification() {
+    if (!settings.soundEnabled) return;
+
+    const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+
+    // Create a different sound pattern for posture changes
+    const createBeep = (frequency, startTime, duration) => {
+        const oscillator = audioContext.createOscillator();
+        const gainNode = audioContext.createGain();
+
+        oscillator.connect(gainNode);
+        gainNode.connect(audioContext.destination);
+
+        oscillator.frequency.value = frequency;
+        oscillator.type = 'sine';
+
+        gainNode.gain.setValueAtTime(0.3, startTime);
+        gainNode.gain.exponentialRampToValueAtTime(0.01, startTime + duration);
+
+        oscillator.start(startTime);
+        oscillator.stop(startTime + duration);
+    };
+
+    const beepDuration = 0.2;
+    const beepGap = 0.1;
+
+    createBeep(600, audioContext.currentTime, beepDuration);
+    createBeep(800, audioContext.currentTime + beepDuration + beepGap, beepDuration);
+}
+
+// Show posture change notification
+function showPostureNotification() {
+    if (!settings.browserNotifications || Notification.permission !== 'granted') return;
+
+    const nextPosture = currentPosture === 'sitting' ? 'standing' : 'sitting';
+    const title = currentPosture === 'sitting' ? '🪑 Time to Sit' : '🧍 Time to Stand';
+    const body = currentPosture === 'sitting'
+        ? `Take a seat and relax for ${settings.sittingDuration} minutes`
+        : `Stand up and move around for ${settings.standingDuration} minutes`;
+
+    new Notification(title, {
+        body: body,
+        icon: currentPosture === 'sitting' ? '🪑' : '🧍'
+    });
+}
+
+// Show active break reminder
+function showActiveBreakReminder() {
+    playPostureNotification();
+
+    if (settings.browserNotifications && Notification.permission === 'granted') {
+        new Notification('🚶 Active Break Time!', {
+            body: 'Take a 5-10 minute walk or stretch to refresh your mind and body',
+            icon: '🚶'
+        });
     }
 }
 
