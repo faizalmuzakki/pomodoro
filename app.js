@@ -38,8 +38,10 @@ let postureStartTime = null;
 let postureInterval = null;
 let postureSeconds = 0;
 let postureTotalSeconds = 0;
+let postureTargetEndTime = null; // Timestamp when posture timer should end
 let activeBreakInterval = null;
 let activeBreakElapsed = 0; // minutes elapsed since last active break
+let lastActiveBreakCheck = null; // Timestamp of last active break check
 
 // DOM Elements
 const timerDisplay = document.getElementById('timerDisplay');
@@ -266,6 +268,11 @@ function setupEventListeners() {
                     completeSession();
                 }
             }
+        }
+
+        // Handle posture timer visibility changes
+        if (!document.hidden && settings.postureReminders && postureTargetEndTime) {
+            syncPostureTimer();
         }
     });
 }
@@ -693,13 +700,16 @@ function startPostureTimer() {
     postureSeconds = postureTotalSeconds;
     currentPosture = 'sitting';
     postureStartTime = Date.now();
-    activeBreakElapsed = 0;
+    postureTargetEndTime = Date.now() + (postureSeconds * 1000);
+    lastActiveBreakCheck = Date.now();
 
     updatePostureDisplay();
 
-    // Start countdown
+    // Start countdown using timestamp-based calculation
     postureInterval = setInterval(() => {
-        postureSeconds--;
+        // Calculate actual remaining time based on target end time
+        const remaining = Math.ceil((postureTargetEndTime - Date.now()) / 1000);
+        postureSeconds = Math.max(0, remaining);
 
         if (postureSeconds <= 0) {
             // Time to switch posture
@@ -708,14 +718,8 @@ function startPostureTimer() {
 
         updatePostureDisplay();
 
-        // Check for active break reminder (every minute)
-        if (postureSeconds % 60 === 0) {
-            activeBreakElapsed++;
-            if (activeBreakElapsed >= settings.activeBreakInterval) {
-                showActiveBreakReminder();
-                activeBreakElapsed = 0;
-            }
-        }
+        // Check for active break reminder using timestamp
+        checkActiveBreakReminder();
     }, 1000);
 
     // Show UI
@@ -733,9 +737,32 @@ function stopPostureTimer() {
     // Update stats with remaining time
     updatePostureTimeStats();
 
+    // Clear timestamps
+    postureTargetEndTime = null;
+    lastActiveBreakCheck = null;
+
     // Hide UI
     postureTimerContainer.style.display = 'none';
     postureStatsContainer.style.display = 'none';
+}
+
+// Sync posture timer when tab becomes visible (handles browser throttling)
+function syncPostureTimer() {
+    if (!postureTargetEndTime) return;
+
+    // Calculate actual remaining time based on target end time
+    const remaining = Math.ceil((postureTargetEndTime - Date.now()) / 1000);
+    postureSeconds = Math.max(0, remaining);
+
+    updatePostureDisplay();
+
+    // Check if timer completed while tab was inactive
+    if (postureSeconds <= 0) {
+        completePostureCycle();
+    }
+
+    // Check if active break reminder was missed
+    checkActiveBreakReminder();
 }
 
 // Update posture display
@@ -777,10 +804,11 @@ function completePostureCycle() {
     saveStats();
     updatePostureStats();
 
-    // Set new duration
+    // Set new duration with timestamp
     postureTotalSeconds = (currentPosture === 'sitting' ? settings.sittingDuration : settings.standingDuration) * 60;
     postureSeconds = postureTotalSeconds;
     postureStartTime = Date.now();
+    postureTargetEndTime = Date.now() + (postureSeconds * 1000);
 
     updatePostureDisplay();
 }
@@ -796,10 +824,11 @@ function switchPosture() {
     saveStats();
     updatePostureStats();
 
-    // Set new duration
+    // Set new duration with timestamp
     postureTotalSeconds = (currentPosture === 'sitting' ? settings.sittingDuration : settings.standingDuration) * 60;
     postureSeconds = postureTotalSeconds;
     postureStartTime = Date.now();
+    postureTargetEndTime = Date.now() + (postureSeconds * 1000);
 
     updatePostureDisplay();
 }
@@ -870,6 +899,22 @@ function showPostureNotification() {
         body: body,
         icon: currentPosture === 'sitting' ? '🪑' : '🧍'
     });
+}
+
+// Check if active break reminder should be triggered
+function checkActiveBreakReminder() {
+    if (!lastActiveBreakCheck) {
+        lastActiveBreakCheck = Date.now();
+        return;
+    }
+
+    // Calculate elapsed time since last check in minutes
+    const elapsedMinutes = Math.floor((Date.now() - lastActiveBreakCheck) / 60000);
+
+    if (elapsedMinutes >= settings.activeBreakInterval) {
+        showActiveBreakReminder();
+        lastActiveBreakCheck = Date.now();
+    }
 }
 
 // Show active break reminder
