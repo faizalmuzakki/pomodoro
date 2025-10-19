@@ -39,6 +39,7 @@ let postureInterval = null;
 let postureSeconds = 0;
 let postureTotalSeconds = 0;
 let postureTargetEndTime = null; // Timestamp when posture timer should end
+let postureIsRunning = true; // Track if posture timer is running
 let activeBreakInterval = null;
 let activeBreakElapsed = 0; // minutes elapsed since last active break
 let lastActiveBreakCheck = null; // Timestamp of last active break check
@@ -81,6 +82,7 @@ const postureStatus = document.getElementById('postureStatus');
 const postureTime = document.getElementById('postureTime');
 const postureProgressBar = document.getElementById('postureProgressBar');
 const switchPostureBtn = document.getElementById('switchPostureBtn');
+const pausePostureBtn = document.getElementById('pausePostureBtn');
 const postureStatsContainer = document.getElementById('postureStatsContainer');
 const postureChangesEl = document.getElementById('postureChanges');
 const timeStandingEl = document.getElementById('timeStanding');
@@ -231,6 +233,7 @@ function setupEventListeners() {
     // Posture timer listeners
     postureRemindersInput.addEventListener('change', togglePostureSettings);
     switchPostureBtn.addEventListener('click', switchPosture);
+    pausePostureBtn.addEventListener('click', togglePausePostureTimer);
 
     // Close modal when clicking outside
     settingsModal.addEventListener('click', (e) => {
@@ -702,11 +705,14 @@ function startPostureTimer() {
     postureStartTime = Date.now();
     postureTargetEndTime = Date.now() + (postureSeconds * 1000);
     lastActiveBreakCheck = Date.now();
+    postureIsRunning = true;
 
     updatePostureDisplay();
 
     // Start countdown using timestamp-based calculation
     postureInterval = setInterval(() => {
+        if (!postureIsRunning) return; // Skip if paused
+
         // Calculate actual remaining time based on target end time
         const remaining = Math.ceil((postureTargetEndTime - Date.now()) / 1000);
         postureSeconds = Math.max(0, remaining);
@@ -830,7 +836,28 @@ function switchPosture() {
     postureStartTime = Date.now();
     postureTargetEndTime = Date.now() + (postureSeconds * 1000);
 
+    // Resume if currently paused
+    if (!postureIsRunning) {
+        postureIsRunning = true;
+    }
+
     updatePostureDisplay();
+}
+
+// Toggle pause/resume for posture timer
+function togglePausePostureTimer() {
+    if (postureIsRunning) {
+        // Pause the timer
+        postureIsRunning = false;
+        pausePostureBtn.innerHTML = '▶️ Resume';
+    } else {
+        // Resume the timer
+        postureIsRunning = true;
+        // Recalculate target end time based on current remaining seconds
+        postureTargetEndTime = Date.now() + (postureSeconds * 1000);
+        postureStartTime = Date.now();
+        pausePostureBtn.innerHTML = '⏸️ Pause';
+    }
 }
 
 // Update posture time stats
