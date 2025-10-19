@@ -39,7 +39,7 @@ let postureInterval = null;
 let postureSeconds = 0;
 let postureTotalSeconds = 0;
 let postureTargetEndTime = null; // Timestamp when posture timer should end
-let postureIsRunning = true; // Track if posture timer is running
+let postureIsRunning = false; // Track if posture timer is running (starts paused)
 let activeBreakInterval = null;
 let activeBreakElapsed = 0; // minutes elapsed since last active break
 let lastActiveBreakCheck = null; // Timestamp of last active break check
@@ -102,9 +102,9 @@ function init() {
     setupTimerWorker();
     requestNotificationPermission();
 
-    // Initialize posture timer if enabled
+    // Initialize posture timer if enabled (but don't start it)
     if (settings.postureReminders) {
-        startPostureTimer();
+        initPostureTimer();
         postureTimerContainer.style.display = 'block';
         postureStatsContainer.style.display = 'grid';
     }
@@ -637,15 +637,15 @@ function handleSaveSettings() {
 
     // Handle posture timer toggle
     if (settings.postureReminders && !previousPostureReminders) {
-        // Start posture timer
-        startPostureTimer();
+        // Initialize posture timer (but don't start it)
+        initPostureTimer();
     } else if (!settings.postureReminders && previousPostureReminders) {
         // Stop posture timer
         stopPostureTimer();
     } else if (settings.postureReminders && previousPostureReminders) {
-        // Restart posture timer with new settings
+        // Reinitialize posture timer with new settings
         stopPostureTimer();
-        startPostureTimer();
+        initPostureTimer();
     }
 
     closeSettings();
@@ -696,41 +696,45 @@ function togglePostureSettings() {
     postureSettingsDiv.style.display = postureRemindersInput.checked ? 'block' : 'none';
 }
 
-// Start posture timer
-function startPostureTimer() {
+// Initialize posture timer (without starting it)
+function initPostureTimer() {
     // Set initial posture duration
     postureTotalSeconds = settings.sittingDuration * 60;
     postureSeconds = postureTotalSeconds;
     currentPosture = 'sitting';
-    postureStartTime = Date.now();
-    postureTargetEndTime = Date.now() + (postureSeconds * 1000);
-    lastActiveBreakCheck = Date.now();
-    postureIsRunning = true;
+    postureIsRunning = false; // Start in paused state
 
     updatePostureDisplay();
 
-    // Start countdown using timestamp-based calculation
-    postureInterval = setInterval(() => {
-        if (!postureIsRunning) return; // Skip if paused
+    // Start the interval (but it won't count down until resumed)
+    if (!postureInterval) {
+        postureInterval = setInterval(() => {
+            if (!postureIsRunning) return; // Skip if paused
 
-        // Calculate actual remaining time based on target end time
-        const remaining = Math.ceil((postureTargetEndTime - Date.now()) / 1000);
-        postureSeconds = Math.max(0, remaining);
+            // Calculate actual remaining time based on target end time
+            const remaining = Math.ceil((postureTargetEndTime - Date.now()) / 1000);
+            postureSeconds = Math.max(0, remaining);
 
-        if (postureSeconds <= 0) {
-            // Time to switch posture
-            completePostureCycle();
-        }
+            if (postureSeconds <= 0) {
+                // Time to switch posture
+                completePostureCycle();
+            }
 
-        updatePostureDisplay();
+            updatePostureDisplay();
 
-        // Check for active break reminder using timestamp
-        checkActiveBreakReminder();
-    }, 1000);
+            // Check for active break reminder using timestamp
+            checkActiveBreakReminder();
+        }, 1000);
+    }
 
     // Show UI
     postureTimerContainer.style.display = 'block';
     postureStatsContainer.style.display = 'grid';
+}
+
+// Start posture timer
+function startPostureTimer() {
+    initPostureTimer();
 }
 
 // Stop posture timer
@@ -793,6 +797,9 @@ function updatePostureDisplay() {
         switchPostureBtn.textContent = 'Switch to Sitting';
         document.querySelector('.posture-timer').classList.add('standing');
     }
+
+    // Update pause button state
+    pausePostureBtn.innerHTML = postureIsRunning ? '⏸️ Pause' : '▶️ Resume';
 }
 
 // Complete posture cycle (automatic switch)
@@ -810,19 +817,22 @@ function completePostureCycle() {
     saveStats();
     updatePostureStats();
 
-    // Set new duration with timestamp
+    // Set new duration but DON'T auto-start (user must click resume)
     postureTotalSeconds = (currentPosture === 'sitting' ? settings.sittingDuration : settings.standingDuration) * 60;
     postureSeconds = postureTotalSeconds;
-    postureStartTime = Date.now();
-    postureTargetEndTime = Date.now() + (postureSeconds * 1000);
+    postureIsRunning = false; // Pause and wait for user to resume
+    postureStartTime = null;
+    postureTargetEndTime = null;
 
     updatePostureDisplay();
 }
 
 // Manual posture switch
 function switchPosture() {
-    // Update stats with time spent in current posture
-    updatePostureTimeStats();
+    // Update stats with time spent in current posture (only if running)
+    if (postureIsRunning && postureStartTime) {
+        updatePostureTimeStats();
+    }
 
     // Switch posture
     currentPosture = currentPosture === 'sitting' ? 'standing' : 'sitting';
@@ -830,16 +840,14 @@ function switchPosture() {
     saveStats();
     updatePostureStats();
 
-    // Set new duration with timestamp
+    // Set new duration
     postureTotalSeconds = (currentPosture === 'sitting' ? settings.sittingDuration : settings.standingDuration) * 60;
     postureSeconds = postureTotalSeconds;
+
+    // Auto-start when manually switching
+    postureIsRunning = true;
     postureStartTime = Date.now();
     postureTargetEndTime = Date.now() + (postureSeconds * 1000);
-
-    // Resume if currently paused
-    if (!postureIsRunning) {
-        postureIsRunning = true;
-    }
 
     updatePostureDisplay();
 }
