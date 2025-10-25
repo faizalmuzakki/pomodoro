@@ -43,6 +43,8 @@ let postureIsRunning = false; // Track if posture timer is running (starts pause
 let activeBreakInterval = null;
 let activeBreakElapsed = 0; // minutes elapsed since last active break
 let lastActiveBreakCheck = null; // Timestamp of last active break check
+let continuousAlertInterval = null; // For continuous alert playback
+let alertStartTime = null; // When the alert started
 
 // DOM Elements
 const timerDisplay = document.getElementById('timerDisplay');
@@ -255,6 +257,18 @@ function setupEventListeners() {
         }
     });
 
+    // Stop continuous alert on user interaction
+    const stopAlertOnInteraction = () => {
+        if (continuousAlertInterval) {
+            stopContinuousAlert();
+        }
+    };
+
+    // Listen for various user interactions
+    document.addEventListener('click', stopAlertOnInteraction);
+    document.addEventListener('keydown', stopAlertOnInteraction);
+    document.addEventListener('mousemove', stopAlertOnInteraction, { once: true }); // Only once to avoid constant checking
+
     // Handle visibility change to ensure timer accuracy
     document.addEventListener('visibilitychange', () => {
         if (!document.hidden && isRunning && targetEndTime) {
@@ -349,9 +363,25 @@ function skipSession() {
 function completeSession() {
     pauseTimer();
 
-    // Play notification
-    playNotification();
+    // Start continuous alert (plays for 1 minute or until user interacts)
+    startContinuousAlert();
+
+    // Show browser notifications
     showNotification();
+
+    // Show browser alert dialog
+    let alertMessage;
+    if (sessionType === 'work') {
+        alertMessage = '🎉 Work Session Complete!\n\nTime to take a break and recharge!';
+    } else {
+        alertMessage = '⏰ Break Time Over!\n\nReady to focus again?';
+    }
+
+    // Show alert and stop continuous sound when user clicks OK
+    setTimeout(() => {
+        alert(alertMessage);
+        stopContinuousAlert(); // Stop the continuous sound when user acknowledges
+    }, 100);
 
     // Update stats
     if (sessionType === 'work') {
@@ -493,7 +523,7 @@ function updateStats() {
     }
 }
 
-// Play Notification Sound
+// Play Notification Sound - Enhanced and more noticeable
 function playNotification() {
     if (!settings.soundEnabled) return;
 
@@ -501,7 +531,7 @@ function playNotification() {
     const audioContext = new (window.AudioContext || window.webkitAudioContext)();
 
     // Function to create a single beep
-    const createBeep = (frequency, startTime, duration) => {
+    const createBeep = (frequency, startTime, duration, volume = 0.5) => {
         const oscillator = audioContext.createOscillator();
         const gainNode = audioContext.createGain();
 
@@ -511,20 +541,65 @@ function playNotification() {
         oscillator.frequency.value = frequency;
         oscillator.type = 'sine';
 
-        gainNode.gain.setValueAtTime(0.4, startTime);
+        gainNode.gain.setValueAtTime(volume, startTime);
         gainNode.gain.exponentialRampToValueAtTime(0.01, startTime + duration);
 
         oscillator.start(startTime);
         oscillator.stop(startTime + duration);
     };
 
-    // Create a sequence of 3 beeps for better noticeability
-    const beepDuration = 0.3;
-    const beepGap = 0.15;
+    // Create a longer sequence of beeps - more noticeable and urgent
+    const beepDuration = 0.4; // Longer beeps
+    const beepGap = 0.2;
+    const volume = 0.6; // Louder
 
-    createBeep(800, audioContext.currentTime, beepDuration);
-    createBeep(1000, audioContext.currentTime + beepDuration + beepGap, beepDuration);
-    createBeep(1200, audioContext.currentTime + (beepDuration + beepGap) * 2, beepDuration);
+    // First pattern - rising tones
+    createBeep(600, audioContext.currentTime, beepDuration, volume);
+    createBeep(800, audioContext.currentTime + beepDuration + beepGap, beepDuration, volume);
+    createBeep(1000, audioContext.currentTime + (beepDuration + beepGap) * 2, beepDuration, volume);
+
+    // Pause
+    const pauseTime = audioContext.currentTime + (beepDuration + beepGap) * 3 + 0.3;
+
+    // Second pattern - repeat for emphasis
+    createBeep(600, pauseTime, beepDuration, volume);
+    createBeep(800, pauseTime + beepDuration + beepGap, beepDuration, volume);
+    createBeep(1000, pauseTime + (beepDuration + beepGap) * 2, beepDuration, volume);
+}
+
+// Stop continuous alert
+function stopContinuousAlert() {
+    if (continuousAlertInterval) {
+        clearInterval(continuousAlertInterval);
+        continuousAlertInterval = null;
+        alertStartTime = null;
+    }
+}
+
+// Start continuous alert that plays for 1 minute if user doesn't interact
+function startContinuousAlert() {
+    // Stop any existing alert
+    stopContinuousAlert();
+
+    // Record start time
+    alertStartTime = Date.now();
+
+    // Play initial sound
+    playNotification();
+
+    // Play sound every 5 seconds for up to 1 minute
+    continuousAlertInterval = setInterval(() => {
+        const elapsed = Date.now() - alertStartTime;
+
+        // Stop after 60 seconds
+        if (elapsed >= 60000) {
+            stopContinuousAlert();
+            return;
+        }
+
+        // Play sound
+        playNotification();
+    }, 5000); // Play every 5 seconds
 }
 
 // Show Browser Notification
@@ -850,9 +925,23 @@ function completePostureCycle() {
     // Update stats
     updatePostureTimeStats();
 
-    // Play notification
-    playPostureNotification();
+    // Start continuous alert (plays for 1 minute or until user interacts)
+    startContinuousAlert();
+
+    // Show browser notifications
     showPostureNotification();
+
+    // Show browser alert dialog
+    const nextPosture = currentPosture === 'sitting' ? 'standing' : 'sitting';
+    const alertMessage = nextPosture === 'sitting'
+        ? '🪑 Time to Sit!\n\nTake a seat and relax for a while.'
+        : '🧍 Time to Stand!\n\nStand up and move around for better posture.';
+
+    // Show alert and stop continuous sound when user clicks OK
+    setTimeout(() => {
+        alert(alertMessage);
+        stopContinuousAlert(); // Stop the continuous sound when user acknowledges
+    }, 100);
 
     // Switch posture
     currentPosture = currentPosture === 'sitting' ? 'standing' : 'sitting';
