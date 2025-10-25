@@ -409,6 +409,46 @@ function setSessionType(type) {
     updateSessionInfo();
 }
 
+// Update Tab Title with shortest timer
+function updateTabTitle() {
+    // Determine which timer to show in tab based on shortest remaining time
+    let displayMinutes, displaySeconds, displayLabel;
+
+    // Check if posture timer is active and running
+    const postureActive = settings.postureReminders && postureIsRunning;
+
+    if (isRunning && postureActive) {
+        // Both timers running - show the shortest one
+        if (currentSeconds <= postureSeconds) {
+            displayMinutes = Math.floor(currentSeconds / 60);
+            displaySeconds = currentSeconds % 60;
+            displayLabel = sessionType === 'work' ? 'Work' : 'Break';
+        } else {
+            displayMinutes = Math.floor(postureSeconds / 60);
+            displaySeconds = postureSeconds % 60;
+            displayLabel = currentPosture === 'sitting' ? 'Sit' : 'Stand';
+        }
+    } else if (isRunning) {
+        // Only pomodoro timer running
+        displayMinutes = Math.floor(currentSeconds / 60);
+        displaySeconds = currentSeconds % 60;
+        displayLabel = sessionType === 'work' ? 'Work' : 'Break';
+    } else if (postureActive) {
+        // Only posture timer running
+        displayMinutes = Math.floor(postureSeconds / 60);
+        displaySeconds = postureSeconds % 60;
+        displayLabel = currentPosture === 'sitting' ? 'Sit' : 'Stand';
+    } else {
+        // Neither timer running - show pomodoro timer
+        displayMinutes = Math.floor(currentSeconds / 60);
+        displaySeconds = currentSeconds % 60;
+        displayLabel = 'Pomodoro';
+    }
+
+    const timeString = `${displayMinutes.toString().padStart(2, '0')}:${displaySeconds.toString().padStart(2, '0')}`;
+    document.title = `${timeString} - ${displayLabel}`;
+}
+
 // Update Display
 function updateDisplay() {
     const minutes = Math.floor(currentSeconds / 60);
@@ -421,8 +461,8 @@ function updateDisplay() {
     const offset = circumference * (1 - progress);
     progressCircle.style.strokeDashoffset = offset;
 
-    // Update page title
-    document.title = `${timerDisplay.textContent} - Pomodoro Timer`;
+    // Update page title with shortest timer
+    updateTabTitle();
 
     // Pulse effect when time is almost up
     if (currentSeconds <= 10 && currentSeconds > 0 && isRunning) {
@@ -800,6 +840,9 @@ function updatePostureDisplay() {
 
     // Update pause button state
     pausePostureBtn.innerHTML = postureIsRunning ? '⏸️ Pause' : '▶️ Resume';
+
+    // Update tab title with shortest timer
+    updateTabTitle();
 }
 
 // Complete posture cycle (automatic switch)
